@@ -1,11 +1,17 @@
 package common
 
 import (
+<<<<<<< HEAD
 	"strings"
 	"testing"
 
 	"gno.land/p/demo/uassert"
 	"gno.land/p/demo/ufmt"
+=======
+	"testing"
+
+	"gno.land/p/demo/uassert"
+>>>>>>> e4fff77c (add new unit tests for /r/common)
 )
 
 func TestStrings_Split(t *testing.T) {
@@ -276,6 +282,7 @@ func TestStrings_EncodeDecodeRoundTrip(t *testing.T) {
 		})
 	}
 }
+<<<<<<< HEAD
 
 // TestStrings_EdgeCasesAndBoundaries tests edge cases and boundary conditions
 func TestStrings_EdgeCasesAndBoundaries(t *testing.T) {
@@ -415,3 +422,5 @@ func TestStrings_ErrorMessageValidation(t *testing.T) {
 			})
 	})
 }
+=======
+>>>>>>> e4fff77c (add new unit tests for /r/common)

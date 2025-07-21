@@ -4,7 +4,10 @@ import (
 	"testing"
 
 	"gno.land/p/demo/uassert"
+<<<<<<< HEAD
 	"gno.land/p/demo/ufmt"
+=======
+>>>>>>> e4fff77c (add new unit tests for /r/common)
 
 	u256 "gno.land/p/gnoswap/uint256"
 )
@@ -184,6 +187,7 @@ func TestUtil_IntegrationTest(t *testing.T) {
 		})
 	}
 }
+<<<<<<< HEAD
 
 // TestUtil_ErrorHandling tests error handling in util functions
 func TestUtil_ErrorHandling(t *testing.T) {
@@ -271,3 +275,5 @@ func TestUtil_PerformanceAndStress(t *testing.T) {
 		uassert.True(t, true)
 	})
 }
+=======
+>>>>>>> e4fff77c (add new unit tests for /r/common)
