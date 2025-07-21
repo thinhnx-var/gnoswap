@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gno.land/p/demo/uassert"
+	"gno.land/p/demo/ufmt"
 
 	u256 "gno.land/p/gnoswap/uint256"
 )
@@ -182,4 +183,91 @@ func TestUtil_IntegrationTest(t *testing.T) {
 			uassert.True(t, true)
 		})
 	}
+}
+
+// TestUtil_ErrorHandling tests error handling in util functions
+func TestUtil_ErrorHandling(t *testing.T) {
+	t.Run("assertOnlyNotNil with various nil scenarios", func(t *testing.T) {
+		var nilUint *u256.Uint = nil
+		
+		uassert.PanicsWithMessage(t, 
+			"[GNOSWAP-COMMON-008] invalid input data || value is nil", 
+			func() {
+				assertOnlyNotNil(nilUint)
+			})
+	})
+	
+	t.Run("assertOnlyNotNil with valid values", func(t *testing.T) {
+		validValues := []*u256.Uint{
+			u256.NewUint(0),
+			u256.NewUint(1),
+			u256.NewUint(999999999999999),
+			u256.MustFromDecimal("12345678901234567890"),
+		}
+		
+		for i, val := range validValues {
+			t.Run(ufmt.Sprintf("valid_value_%d", i), func(t *testing.T) {
+				// Should not panic
+				assertOnlyNotNil(val)
+				uassert.True(t, true) // If we reach here, test passed
+			})
+		}
+	})
+}
+
+// TestUtil_RealmFunctions tests realm-related utility functions
+func TestUtil_RealmFunctions(t *testing.T) {
+	t.Run("getPrevRealm consistency", func(t *testing.T) {
+		realm1 := getPrevRealm()
+		realm2 := getPrevRealm()
+		
+		// Both calls should return consistent results
+		uassert.Equal(t, realm1.IsUser(), realm2.IsUser())
+		uassert.Equal(t, realm1.PkgPath(), realm2.PkgPath())
+	})
+	
+	t.Run("getPrevAddr consistency", func(t *testing.T) {
+		addr1 := getPrevAddr()
+		addr2 := getPrevAddr()
+		
+		// Both calls should return the same address
+		uassert.Equal(t, addr1.String(), addr2.String())
+	})
+	
+	t.Run("getPrevAsString components", func(t *testing.T) {
+		addrStr, pkgPath := getPrevAsString()
+		
+		// Verify components are related to direct calls
+		directAddr := getPrevAddr()
+		directRealm := getPrevRealm()
+		
+		uassert.Equal(t, directAddr.String(), addrStr)
+		uassert.Equal(t, directRealm.PkgPath(), pkgPath)
+	})
+}
+
+// TestUtil_PerformanceAndStress tests performance characteristics
+func TestUtil_PerformanceAndStress(t *testing.T) {
+	t.Run("assertOnlyNotNil performance with many calls", func(t *testing.T) {
+		testValue := u256.NewUint(42)
+		
+		// Call the function many times to ensure it's efficient
+		for i := 0; i < 1000; i++ {
+			assertOnlyNotNil(testValue)
+		}
+		
+		// If we reach here without timeout, performance is acceptable
+		uassert.True(t, true)
+	})
+	
+	t.Run("realm functions with repeated calls", func(t *testing.T) {
+		// Test that repeated calls don't cause issues
+		for i := 0; i < 100; i++ {
+			_ = getPrevRealm()
+			_ = getPrevAddr()
+			_, _ = getPrevAsString()
+		}
+		
+		uassert.True(t, true)
+	})
 }

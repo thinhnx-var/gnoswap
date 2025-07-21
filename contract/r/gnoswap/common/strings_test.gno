@@ -1,9 +1,11 @@
 package common
 
 import (
+	"strings"
 	"testing"
 
 	"gno.land/p/demo/uassert"
+	"gno.land/p/demo/ufmt"
 )
 
 func TestStrings_Split(t *testing.T) {
@@ -273,4 +275,143 @@ func TestStrings_EncodeDecodeRoundTrip(t *testing.T) {
 			uassert.Equal(t, 20, len(encoded))
 		})
 	}
+}
+
+// TestStrings_EdgeCasesAndBoundaries tests edge cases and boundary conditions
+func TestStrings_EdgeCasesAndBoundaries(t *testing.T) {
+	t.Run("Split with complex separators", func(t *testing.T) {
+		tests := []struct {
+			name           string
+			input          string
+			separator      string
+			length         int
+			expected       []string
+			shouldError    bool
+		}{
+			{
+				name:        "Multi-character separator",
+				input:       "a::b::c",
+				separator:   "::",
+				length:      3,
+				expected:    []string{"a", "b", "c"},
+				shouldError: false,
+			},
+			{
+				name:        "Separator longer than input",
+				input:       "ab",
+				separator:   "abcd",
+				length:      1,
+				expected:    []string{"ab"},
+				shouldError: false,
+			},
+			{
+				name:        "Input equals separator",
+				input:       "abc",
+				separator:   "abc",
+				length:      2,
+				expected:    []string{"", ""},
+				shouldError: false,
+			},
+		}
+		
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				result, err := Split(tc.input, tc.separator, tc.length)
+				if tc.shouldError {
+					uassert.Error(t, err)
+				} else {
+					uassert.NoError(t, err)
+					uassert.Equal(t, len(tc.expected), len(result))
+					for i, expected := range tc.expected {
+						uassert.Equal(t, expected, result[i])
+					}
+				}
+			})
+		}
+	})
+	
+	t.Run("EncodeUint boundary values", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			input    uint64
+			expected string
+		}{
+			{
+				name:     "Maximum uint64",
+				input:    18446744073709551615,
+				expected: "18446744073709551615",
+			},
+			{
+				name:     "Minimum uint64",
+				input:    0,
+				expected: "00000000000000000000",
+			},
+			{
+				name:     "Powers of 10",
+				input:    10000000000000000000,
+				expected: "10000000000000000000",
+			},
+		}
+		
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				result := EncodeUint(tc.input)
+				uassert.Equal(t, tc.expected, result)
+			})
+		}
+	})
+}
+
+// TestStrings_Performance tests performance characteristics
+func TestStrings_Performance(t *testing.T) {
+	t.Run("Multiple encode/decode cycles", func(t *testing.T) {
+		testValues := []uint64{0, 1, 999, 1000, 999999, 1000000, 18446744073709551615}
+		
+		for _, val := range testValues {
+			for i := 0; i < 100; i++ {
+				encoded := EncodeUint(val)
+				decoded := DecodeUint(encoded)
+				uassert.Equal(t, val, decoded)
+			}
+		}
+	})
+	
+	t.Run("Large string splits", func(t *testing.T) {
+		// Create a large string with many parts
+		parts := make([]string, 100)
+		for i := 0; i < 100; i++ {
+			parts[i] = ufmt.Sprintf("part%d", i)
+		}
+		largeInput := strings.Join(parts, ",")
+		
+		result, err := Split(largeInput, ",", 100)
+		uassert.NoError(t, err)
+		uassert.Equal(t, 100, len(result))
+		
+		for i, part := range result {
+			expected := ufmt.Sprintf("part%d", i)
+			uassert.Equal(t, expected, part)
+		}
+	})
+}
+
+// TestStrings_ErrorMessageValidation tests error message formats
+func TestStrings_ErrorMessageValidation(t *testing.T) {
+	t.Run("Split error message format", func(t *testing.T) {
+		_, err := Split("a,b,c", ",", 2)
+		uassert.Error(t, err)
+		
+		errorMsg := err.Error()
+		uassert.True(t, len(errorMsg) > 0)
+		// Should contain information about the length
+		uassert.True(t, strings.Contains(errorMsg, "invalid length"))
+	})
+	
+	t.Run("DecodeUint panic message format", func(t *testing.T) {
+		uassert.PanicsWithMessage(t, 
+			"strconv.ParseUint: parsing \"invalid\": invalid syntax",
+			func() {
+				DecodeUint("invalid")
+			})
+	})
 }

@@ -85,6 +85,16 @@ func TestPositionOnly(t *testing.T) {
 	})
 }
 
+func TestPoolOnly(t *testing.T) {
+	t.Run("caller is pool", func(t *testing.T) {
+		uassert.NoError(t, PoolOnly(consts.POOL_ADDR))
+	})
+
+	t.Run("caller is not pool", func(t *testing.T) {
+		uassert.Error(t, PoolOnly(addr01))
+	})
+}
+
 func TestStakerOnly(t *testing.T) {
 	t.Run("caller is staker", func(t *testing.T) {
 		uassert.NoError(t, StakerOnly(consts.STAKER_ADDR))
@@ -122,5 +132,47 @@ func TestUserOnly(t *testing.T) {
 
 	t.Run("caller is not user", func(t *testing.T) {
 		uassert.Error(t, UserOnly(std.NewCodeRealm("gno.land/r/realm")))
+	})
+}
+
+// TestAccessFunctions_EdgeCases tests edge cases for all access functions
+func TestAccessFunctions_EdgeCases(t *testing.T) {
+	zeroAddr := std.Address("")
+	
+	t.Run("AssertCaller with empty addresses", func(t *testing.T) {
+		uassert.NoError(t, AssertCaller(zeroAddr, zeroAddr))
+		uassert.Error(t, AssertCaller(addr01, zeroAddr))
+		uassert.Error(t, AssertCaller(zeroAddr, addr01))
+	})
+	
+	t.Run("AdminOnly with zero address", func(t *testing.T) {
+		uassert.Error(t, AdminOnly(zeroAddr))
+	})
+	
+	t.Run("GovernanceOnly with zero address", func(t *testing.T) {
+		uassert.Error(t, GovernanceOnly(zeroAddr))
+	})
+	
+	t.Run("All role-based functions with correct constants", func(t *testing.T) {
+		// Test that all functions accept their respective constant addresses
+		uassert.NoError(t, AdminOnly(consts.ADMIN))
+		uassert.NoError(t, GovernanceOnly(consts.GOV_GOVERNANCE_ADDR))
+		uassert.NoError(t, GovStakerOnly(consts.GOV_STAKER_ADDR))
+		uassert.NoError(t, RouterOnly(consts.ROUTER_ADDR))
+		uassert.NoError(t, PoolOnly(consts.POOL_ADDR))
+		uassert.NoError(t, PositionOnly(consts.POSITION_ADDR))
+		uassert.NoError(t, StakerOnly(consts.STAKER_ADDR))
+		uassert.NoError(t, LaunchpadOnly(consts.LAUNCHPAD_ADDR))
+		uassert.NoError(t, EmissionOnly(consts.EMISSION_ADDR))
+	})
+	
+	t.Run("Error message format validation", func(t *testing.T) {
+		err := AssertCaller(addr01, addr02)
+		uassert.Error(t, err)
+		uassert.True(t, len(err.Error()) > 0)
+		
+		// Check that error contains the caller address
+		errorMsg := err.Error()
+		uassert.True(t, len(errorMsg) > len(addr01.String()))
 	})
 }

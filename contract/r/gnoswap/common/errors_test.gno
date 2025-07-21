@@ -138,3 +138,82 @@ func TestErrors_ErrorConstants(t *testing.T) {
 		})
 	}
 }
+
+// TestErrors_ConsistencyAndNaming tests error naming consistency and uniqueness
+func TestErrors_ConsistencyAndNaming(t *testing.T) {
+	allErrors := []error{
+		errNoPermission, errHalted, errOutOfRange, errNotRegistered,
+		errInvalidAddr, errOverflow, errInvalidPositionId, errInvalidInput,
+		errOverFlow, errIdenticalTicks,
+	}
+	
+	t.Run("All errors have unique codes", func(t *testing.T) {
+		seen := make(map[string]bool)
+		for _, err := range allErrors {
+			msg := err.Error()
+			// Extract error code (assuming format [GNOSWAP-COMMON-XXX])
+			if len(msg) > 20 {
+				code := msg[0:20] // approximate code extraction
+				if seen[code] {
+					t.Errorf("Duplicate error code detected: %s", code)
+				}
+				seen[code] = true
+			}
+		}
+	})
+	
+	t.Run("All errors follow naming convention", func(t *testing.T) {
+		for _, err := range allErrors {
+			msg := err.Error()
+			uassert.True(t, len(msg) > 0)
+			// Check that error starts with [GNOSWAP-COMMON-
+			if len(msg) > 16 {
+				prefix := msg[0:16]
+				uassert.Equal(t, "[GNOSWAP-COMMON-", prefix)
+			}
+		}
+	})
+}
+
+// TestErrors_WithDetailEdgeCases tests edge cases for newErrorWithDetail
+func TestErrors_WithDetailEdgeCases(t *testing.T) {
+	tests := []struct {
+		name           string
+		inputError     error
+		inputDetail    string
+		expectedResult string
+	}{
+		{
+			name:           "Very long detail string",
+			inputError:     errInvalidInput,
+			inputDetail:    "This is a very long detail string that contains a lot of information about what went wrong and could potentially be used to debug complex issues in the system",
+			expectedResult: "[GNOSWAP-COMMON-008] invalid input data || This is a very long detail string that contains a lot of information about what went wrong and could potentially be used to debug complex issues in the system",
+		},
+		{
+			name:           "Detail with special formatting characters",
+			inputError:     errInvalidAddr,
+			inputDetail:    "address\nwith\nnewlines\tand\ttabs",
+			expectedResult: "[GNOSWAP-COMMON-005] invalid address || address\nwith\nnewlines\tand\ttabs",
+		},
+		{
+			name:           "Detail with unicode characters",
+			inputError:     errOverflow,
+			inputDetail:    "数値が大きすぎます (value too large)",
+			expectedResult: "[GNOSWAP-COMMON-006] overflow || 数値が大きすぎます (value too large)",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// given
+			inputError := tc.inputError
+			inputDetail := tc.inputDetail
+
+			// when
+			result := newErrorWithDetail(inputError, inputDetail)
+
+			// then
+			uassert.Equal(t, tc.expectedResult, result)
+		})
+	}
+}
