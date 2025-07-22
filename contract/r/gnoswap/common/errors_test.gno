@@ -138,7 +138,6 @@ func TestErrors_ErrorConstants(t *testing.T) {
 		})
 	}
 }
-<<<<<<< HEAD
 
 // TestErrors_ConsistencyAndNaming tests error naming consistency and uniqueness
 func TestErrors_ConsistencyAndNaming(t *testing.T) {
@@ -218,5 +217,3 @@ func TestErrors_WithDetailEdgeCases(t *testing.T) {
 		})
 	}
 }
-=======
->>>>>>> e4fff77c (add new unit tests for /r/common)
