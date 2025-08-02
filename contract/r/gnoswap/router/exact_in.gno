@@ -6,8 +6,9 @@ import (
 	"gno.land/p/demo/ufmt"
 
 	i256 "gno.land/p/gnoswap/int256"
-	u256 "gno.land/p/gnoswap/uint256"
 
+	"gno.land/r/gnoswap/v1/emission"
+	"gno.land/r/gnoswap/v1/halt"
 	"gno.land/r/gnoswap/v1/referral"
 )
 
@@ -37,67 +38,47 @@ func ExactInSwapRoute(cur realm,
 	deadline int64,
 	referrer string,
 ) (string, string) {
-	if err := checkDeadline(deadline); err != nil {
-		panic(addDetailToError(errExpired, err.Error()))
+	halt.AssertIsNotHaltedRouter()
+	halt.AssertIsNotHaltedWithdraw()
+
+	assertIsNotPassedDeadline(deadline)
+
+	emission.MintAndDistributeGns(cross)
+
+	params := SwapRouteParams{
+		inputToken:  inputToken,
+		outputToken: outputToken,
+		routeArr:    RouteArr,
+		quoteArr:    quoteArr,
+		deadline:    deadline,
+		typ:         ExactIn,
+		exactAmount: amountIn,
+		limitAmount: amountOutMin,
 	}
 
-	if err := commonSwapSetup(); err != nil {
-		panic(addDetailToError(errInvalidInput, err.Error()))
-	}
-
-	baseParams := BaseSwapParams{
-		InputToken:  inputToken,
-		OutputToken: outputToken,
-		RouteArr:    RouteArr,
-		QuoteArr:    quoteArr,
-	}
-
-	pp := NewExactInParams(
-		baseParams,
-		amountIn,
-		amountOutMin,
-	)
-
-	op := NewExactInSwapOperation(pp)
-
-	result, err := executeSwapOperation(op)
+	inputAmount, outputAmount, err := commonSwapRoute(cur, params)
 	if err != nil {
-		panic(addDetailToError(
-			errInvalidInput,
-			ufmt.Sprintf("invalid ExactInSwapOperation: %s", err.Error()),
-		))
+		panic(err)
 	}
 
-	inputAmount, outputAmount := finalizeSwap(
-		pp.InputToken,
-		pp.OutputToken,
-		result.AmountIn,
-		result.AmountOut,
-		ExactIn,
-		u256.MustFromDecimal(pp.AmountOutMin),
-		op.userBeforeWugnotBalance,
-		op.userWrappedWugnot,
-		result.AmountSpecified.Abs(),
-	)
-
-	prevAddr, prevPkgPath := getPrev()
-	success := referral.TryRegister(cross, std.Address(prevAddr), referrer)
-
-	// get the actual referral address that was used
+	// handle referral registration
+	previousRealm := std.PreviousRealm()
+	caller := previousRealm.Address()
+	success := referral.TryRegister(cross, caller, referrer)
 	actualReferrer := referrer
 	if !success {
-		actualReferrer = referral.GetReferral(prevAddr)
+		actualReferrer = referral.GetReferral(caller.String())
 	}
 
 	std.Emit(
 		"ExactInSwap",
-		"prevAddr", prevAddr,
-		"prevRealm", prevPkgPath,
-		"input", pp.InputToken,
-		"output", pp.OutputToken,
+		"prevAddr", previousRealm.Address().String(),
+		"prevRealm", previousRealm.PkgPath(),
+		"input", inputToken,
+		"output", outputToken,
 		"exactAmount", amountIn,
-		"route", pp.RouteArr,
-		"quote", pp.QuoteArr,
+		"route", RouteArr,
+		"quote", quoteArr,
 		"resultInputAmount", inputAmount,
 		"resultOutputAmount", outputAmount,
 		"referrer", actualReferrer,

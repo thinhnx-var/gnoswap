@@ -2,18 +2,14 @@ package router
 
 import (
 	"bytes"
-	"std"
 	"strconv"
 	"strings"
 	"time"
 
 	"gno.land/p/demo/ufmt"
-	"gno.land/r/gnoswap/v1/common"
-	"gno.land/r/gnoswap/v1/emission"
 
 	i256 "gno.land/p/gnoswap/int256"
 	u256 "gno.land/p/gnoswap/uint256"
-	"gno.land/r/gnoswap/v1/halt"
 )
 
 var (
@@ -31,10 +27,18 @@ func assertHopsInRange(hops int) {
 	}
 }
 
+// assertIsNotPassedDeadline panics if the deadline is passed.
+func assertIsNotPassedDeadline(deadline int64) {
+	if err := checkDeadline(deadline); err != nil {
+		errMsg := addDetailToError(errExpired, err.Error())
+		panic(errMsg)
+	}
+}
+
 // getDataForSinglePath extracts token0, token1, and fee from a single path.
 func getDataForSinglePath(poolPath string) (token0, token1 string, fee uint32) {
-	poolPathSplit, err := common.Split(poolPath, ":", 3)
-	if err != nil {
+	poolPathSplit := strings.Split(poolPath, ":")
+	if len(poolPathSplit) != 3 {
 		panic(addDetailToError(
 			errInvalidPoolPath,
 			ufmt.Sprintf("len(poolPathSplit) != 3, poolPath: %s", poolPath),
@@ -70,50 +74,6 @@ func i256MinMax(x, y *i256.Int) (min, max *u256.Uint) {
 		return x.Abs(), y.Abs()
 	}
 	return y.Abs(), x.Abs()
-}
-
-// getPrevAddr returns the address of the previous realm.
-func getPrevAddr() std.Address {
-	return std.PreviousRealm().Address()
-}
-
-// getPrev returns the address and package path of the previous realm.
-func getPrev() (string, string) {
-	prev := std.PreviousRealm()
-	return prev.Address().String(), prev.PkgPath()
-}
-
-// haltCheck performs security validations before any swap operation
-func haltCheck() error {
-	currentLevel := halt.GetCurrentHaltLevel()
-
-	if currentLevel != halt.LvMainnetSafeMode {
-		// check for withdraw operation halt
-		if err := halt.IsHalted(halt.OpTypeWithdraw); err != nil {
-			return err
-		}
-
-		// check for router contract halt
-		if halt.IsContractHalted(halt.OpTypeRouter) {
-			return ufmt.Errorf(errRouterHalted)
-		}
-	}
-
-	return nil
-}
-
-// commonSwapSetup performs all necessary validations and setup for a swap operation
-func commonSwapSetup() error {
-	if err := haltCheck(); err != nil {
-		return err
-	}
-
-	if common.GetLimitCaller() && std.PreviousRealm().PkgPath() != "" {
-		return ufmt.Errorf("%v: only user can call this function", errNoPermission)
-	}
-
-	emission.MintAndDistributeGns(cross)
-	return nil
 }
 
 // checkDeadline checks if the deadline is expired.

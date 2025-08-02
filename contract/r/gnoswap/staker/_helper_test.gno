@@ -7,9 +7,8 @@ import (
 
 	"gno.land/p/demo/testutils"
 
-	"gno.land/p/gnoswap/consts"
+	prbac "gno.land/p/gnoswap/rbac"
 
-	"gno.land/r/gnoswap/v1/access"
 	"gno.land/r/gnoswap/v1/common"
 	pl "gno.land/r/gnoswap/v1/pool"
 	pn "gno.land/r/gnoswap/v1/position"
@@ -48,20 +47,18 @@ var (
 )
 
 var (
-	adminAddr, _ = access.GetAddress(access.ROLE_ADMIN)
-	admin        = adminAddr
-	adminRealm   = std.NewUserRealm(admin)
+	adminRealm = std.NewUserRealm(adminAddr)
 
 	alice = testutils.TestAddress("alice")
 
-	govGovernanceAddr, _ = access.GetAddress(access.ROLE_GOVERNANCE)
-	poolAddr, _          = access.GetAddress(access.ROLE_POOL)
-	routerAddr, _        = access.GetAddress(access.ROLE_ROUTER)
-	emissionAddr, _      = access.GetAddress(access.ROLE_EMISSION)
+	govGovernanceAddr = getRoleAddress(prbac.ROLE_GOVERNANCE)
+	poolAddr          = getRoleAddress(prbac.ROLE_POOL)
+	routerAddr        = getRoleAddress(prbac.ROLE_ROUTER)
+	emissionAddr      = getRoleAddress(prbac.ROLE_EMISSION)
 
-	posRealm    = std.NewCodeRealm(consts.POSITION_PATH)
-	rouRealm    = std.NewCodeRealm(consts.ROUTER_PATH)
-	stakerRealm = std.NewCodeRealm(consts.STAKER_PATH)
+	posRealm    = std.NewCodeRealm("gno.land/r/gnoswap/v1/position")
+	rouRealm    = std.NewCodeRealm("gno.land/r/gnoswap/v1/router")
+	stakerRealm = std.NewCodeRealm("gno.land/r/gnoswap/v1/staker")
 
 	// addresses used in tests
 	addrUsedInTest = []std.Address{addr01, addr02}
@@ -105,7 +102,7 @@ func CreateSecondPoolWithoutFee(t *testing.T) {
 		bazPath,
 		fee3000,
 		common.TickMathGetSqrtRatioAtTick(0).ToString(),
-		admin,
+		adminAddr,
 	)
 }
 
@@ -115,8 +112,8 @@ func MakeMintPositionWithoutFee(t *testing.T) (uint64, string, string, string) {
 	// make actual data to test resetting not only position's state but also pool's state
 	testing.SetRealm(adminRealm)
 
-	TokenApprove(t, barPath, admin, poolAddr, maxApprove)
-	TokenApprove(t, bazPath, admin, poolAddr, maxApprove)
+	TokenApprove(t, barPath, adminAddr, poolAddr, maxApprove)
+	TokenApprove(t, bazPath, adminAddr, poolAddr, maxApprove)
 
 	// mint position
 	return pn.Mint(
@@ -131,15 +128,15 @@ func MakeMintPositionWithoutFee(t *testing.T) (uint64, string, string, string) {
 		"0",
 		"0",
 		max_timeout,
-		admin,
-		admin,
+		adminAddr,
+		adminAddr,
 		"",
 	)
 }
 
 func TokenFaucet(t *testing.T, tokenPath string, to std.Address) {
 	t.Helper()
-	testing.SetOriginCaller(admin)
+	testing.SetOriginCaller(adminAddr)
 	defaultAmount := int64(5_000_000_000)
 
 	switch tokenPath {
@@ -307,43 +304,43 @@ func quxApprove(t *testing.T, owner, spender std.Address, amount int64) {
 
 func wugnotTransfer(t *testing.T, to std.Address, amount int64) {
 	t.Helper()
-	testing.SetRealm(std.NewUserRealm(admin))
+	testing.SetRealm(adminRealm)
 	wugnot.Transfer(cross, to, amount)
 }
 
 func gnsTransfer(t *testing.T, to std.Address, amount int64) {
 	t.Helper()
-	testing.SetRealm(std.NewUserRealm(admin))
+	testing.SetRealm(adminRealm)
 	gns.Transfer(cross, to, amount)
 }
 
 func barTransfer(t *testing.T, to std.Address, amount int64) {
 	t.Helper()
-	testing.SetRealm(std.NewUserRealm(admin))
+	testing.SetRealm(adminRealm)
 	bar.Transfer(cross, to, amount)
 }
 
 func bazTransfer(t *testing.T, to std.Address, amount int64) {
 	t.Helper()
-	testing.SetRealm(std.NewUserRealm(admin))
+	testing.SetRealm(adminRealm)
 	baz.Transfer(cross, to, amount)
 }
 
 func fooTransfer(t *testing.T, to std.Address, amount int64) {
 	t.Helper()
-	testing.SetRealm(std.NewUserRealm(admin))
+	testing.SetRealm(adminRealm)
 	foo.Transfer(cross, to, amount)
 }
 
 func oblTransfer(t *testing.T, to std.Address, amount int64) {
 	t.Helper()
-	testing.SetRealm(std.NewUserRealm(admin))
+	testing.SetRealm(adminRealm)
 	obl.Transfer(cross, to, amount)
 }
 
 func quxTransfer(t *testing.T, to std.Address, amount int64) {
 	t.Helper()
-	testing.SetRealm(std.NewUserRealm(admin))
+	testing.SetRealm(adminRealm)
 	qux.Transfer(cross, to, amount)
 }
 
@@ -384,7 +381,7 @@ func ugnotBurn(t *testing.T, addr std.Address, denom string, amount int64) {
 
 func ugnotFaucet(t *testing.T, to std.Address, amount int64) {
 	t.Helper()
-	faucetAddress := admin
+	faucetAddress := adminAddr
 	testing.SetOriginCaller(faucetAddress)
 
 	if ugnotBalanceOf(t, faucetAddress) < amount {
@@ -398,9 +395,8 @@ func ugnotFaucet(t *testing.T, to std.Address, amount int64) {
 func ugnotDeposit(t *testing.T, addr std.Address, amount int64) {
 	t.Helper()
 	testing.SetRealm(std.NewUserRealm(addr))
-	wugnotAddr := consts.WUGNOT_ADDR
 	banker := std.NewBanker(std.BankerTypeRealmSend)
-	banker.SendCoins(addr, wugnotAddr, std.Coins{{ugnotDenom, amount}})
+	banker.SendCoins(addr, WUGNOT_ADDR, std.Coins{{ugnotDenom, amount}})
 	wugnot.Deposit(cross)
 }
 

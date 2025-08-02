@@ -7,20 +7,21 @@ import (
 	"gno.land/p/demo/testutils"
 	"gno.land/p/demo/uassert"
 
-	"gno.land/p/gnoswap/consts"
+	prabc "gno.land/p/gnoswap/rbac"
 
-	"gno.land/r/gnoswap/v1/access"
 	"gno.land/r/gnoswap/v1/gns"
 	"gno.land/r/gnoswap/v1/halt"
+	"gno.land/r/gnoswap/v1/rbac" // initialize rbac package
 )
 
 var (
-	adminAddr, _ = access.GetAddress(access.ROLE_ADMIN)
-	adminRealm   = std.NewUserRealm(adminAddr)
+	adminAddr  = rbac.DefaultRoleAddresses[prabc.ROLE_ADMIN]
+	adminRealm = std.NewUserRealm(adminAddr)
 
-	communityPoolAddr, _ = access.GetAddress(access.ROLE_COMMUNITY_POOL)
+	communityPoolAddr = rbac.DefaultRoleAddresses[prabc.ROLE_COMMUNITY_POOL]
 
-	govRealm = std.NewCodeRealm(consts.GOV_GOVERNANCE_PATH)
+	gnsPath  = "gno.land/r/gnoswap/v1/gns"
+	govRealm = std.NewCodeRealm("gno.land/r/gnoswap/v1/gov/governance")
 
 	dummyCaller   = std.NewUserRealm(testutils.TestAddress("dummyCaller"))
 	dummyReceiver = testutils.TestAddress("dummyReceiver")
@@ -28,84 +29,8 @@ var (
 
 func resetCommunityPoolState(t *testing.T) {
 	testing.SetRealm(adminRealm)
-	halt.SetHaltByAdmin(cross, false)
+	halt.SetHaltLevel(cross, halt.HaltLevelNone)
 	gns.Transfer(cross, communityPoolAddr, 10_000)
-}
-
-func TestTransferTokenByAdmin(t *testing.T) {
-	tests := []struct {
-		name        string
-		setup       func()
-		caller      std.Realm
-		tokenPath   string
-		to          std.Address
-		amount      int64
-		shouldPanic bool
-		panicMsg    string
-	}{
-		{
-			name: "panic if halted",
-			setup: func() {
-				testing.SetRealm(adminRealm)
-				halt.SetHaltByAdmin(cross, true)
-			},
-			caller:      adminRealm,
-			tokenPath:   consts.GNS_PATH,
-			to:          dummyReceiver,
-			amount:      1000,
-			shouldPanic: true,
-			panicMsg:    "[GNOSWAP-COMMUNITY_POOL-005] halted || community pool is currently halted",
-		},
-		{
-			name: "panic if not admin",
-			setup: func() {
-				testing.SetRealm(adminRealm)
-				halt.SetHaltByAdmin(cross, false)
-			},
-			caller:      dummyCaller,
-			tokenPath:   consts.GNS_PATH,
-			to:          dummyReceiver,
-			amount:      1000,
-			shouldPanic: true,
-			panicMsg:    "caller(g1v36k6mtegdskcmr9wf047h6lta047h6ljmnks7) has no permission",
-		},
-		{
-			name: "success if enough balance",
-			setup: func() {
-				testing.SetRealm(adminRealm)
-				gns.Transfer(cross, communityPoolAddr, 10_000)
-			},
-			caller:    adminRealm,
-			tokenPath: consts.GNS_PATH,
-			to:        dummyReceiver,
-			amount:    10,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resetCommunityPoolState(t)
-
-			if tt.setup != nil {
-				tt.setup()
-			}
-
-			if tt.caller != (std.Realm{}) {
-				testing.SetRealm(tt.caller)
-			}
-
-			if tt.shouldPanic {
-				uassert.AbortsWithMessage(t, tt.panicMsg, func() {
-					TransferTokenByAdmin(cross, tt.tokenPath, tt.to, tt.amount)
-				})
-			} else {
-				receiverOldBalance := gns.BalanceOf(tt.to)
-				TransferTokenByAdmin(cross, tt.tokenPath, tt.to, tt.amount)
-				receiverNewBalance := gns.BalanceOf(tt.to)
-				uassert.Equal(t, receiverNewBalance-receiverOldBalance, tt.amount)
-			}
-		})
-	}
 }
 
 func TestTransferToken(t *testing.T) {
@@ -123,25 +48,48 @@ func TestTransferToken(t *testing.T) {
 			name: "panic if halted",
 			setup: func() {
 				testing.SetRealm(adminRealm)
-				halt.SetHaltByAdmin(cross, true)
+				halt.SetHaltLevel(cross, halt.HaltLevelComplete)
 			},
-			tokenPath:   consts.GNS_PATH,
+			tokenPath:   gnsPath,
 			to:          dummyReceiver,
 			amount:      1000,
 			shouldPanic: true,
-			panicMsg:    "[GNOSWAP-COMMUNITY_POOL-005] halted || community pool is currently halted",
+			panicMsg:    "halted: community_pool",
 		},
 		{
 			name: "panic if not governance",
 			setup: func() {
 				testing.SetRealm(adminRealm)
-				halt.SetHaltByAdmin(cross, false)
+				halt.SetHaltLevel(cross, halt.HaltLevelNone)
+				testing.SetRealm(dummyCaller)
 			},
-			tokenPath:   consts.GNS_PATH,
+			tokenPath:   gnsPath,
 			to:          dummyReceiver,
 			amount:      1000,
 			shouldPanic: true,
-			panicMsg:    "caller(g100fnnlz5eh87p5hvwt8pf279lxaelm8k8md049) has no permission",
+			panicMsg:    "unauthorized: caller g100fnnlz5eh87p5hvwt8pf279lxaelm8k8md049 is not admin or governance",
+		},
+		{
+			name: "success if enough balance",
+			setup: func() {
+				testing.SetRealm(adminRealm)
+				gns.Transfer(cross, communityPoolAddr, 10_000)
+			},
+			caller:    adminRealm,
+			tokenPath: gnsPath,
+			to:        dummyReceiver,
+			amount:    10,
+		},
+		{
+			name: "admin can transfer community pool token",
+			setup: func() {
+				testing.SetRealm(adminRealm)
+				gns.Transfer(cross, communityPoolAddr, 10_000)
+			},
+			caller:    govRealm,
+			tokenPath: gnsPath,
+			to:        dummyReceiver,
+			amount:    1,
 		},
 		{
 			name: "governance can transfer community pool token",
@@ -150,7 +98,7 @@ func TestTransferToken(t *testing.T) {
 				gns.Transfer(cross, communityPoolAddr, 10_000)
 			},
 			caller:    govRealm,
-			tokenPath: consts.GNS_PATH,
+			tokenPath: gnsPath,
 			to:        dummyReceiver,
 			amount:    1,
 		},

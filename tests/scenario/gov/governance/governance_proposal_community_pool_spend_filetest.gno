@@ -10,7 +10,8 @@ import (
 
 	"gno.land/p/demo/testutils"
 	"gno.land/p/demo/ufmt"
-	"gno.land/p/gnoswap/consts"
+
+	prbac "gno.land/p/gnoswap/rbac"
 
 	"gno.land/r/gnoswap/v1/access"
 	"gno.land/r/gnoswap/v1/gov/governance"
@@ -23,9 +24,9 @@ var t *testing.T
 
 var (
 	to               = testutils.TestAddress("to")
-	tokenPath        = consts.GNS_PATH
-	adminAddr, _     = access.GetAddress(access.ROLE_ADMIN)
-	proposalID       = uint64(1)
+	tokenPath        = "gno.land/r/gnoswap/v1/gns"
+	adminAddr, _     = access.GetAddress(prbac.ROLE_ADMIN.String())
+	proposalID       = int64(1)
 	currentBlockTime = int64(2)
 )
 
@@ -69,8 +70,10 @@ func delegateGnsToAdmin() {
 	delegatedAmount := int64(1_000_000_000)
 	testing.SetRealm(std.NewUserRealm(adminAddr))
 
-	gns.Approve(cross, consts.GOV_STAKER_ADDR, delegatedAmount)
-	gs.Delegate(cross, adminAddr, uint64(delegatedAmount), "")
+	govStakerAddr := std.Address("g17e3ykyqk9jmqe2y9wxe9zhep3p7cw56davjqwa")
+
+	gns.Approve(cross, govStakerAddr, delegatedAmount)
+	gs.Delegate(cross, adminAddr, int64(delegatedAmount), "")
 
 	ufmt.Printf("[INFO] gns delegated to %s (amount: %d)\n", adminAddr.String(), delegatedAmount)
 }
@@ -82,7 +85,7 @@ func proposeCommunityPoolSpend() {
 	println("[INFO] created proposal ID:", proposalID)
 }
 
-func vote(proposalID uint64, yea bool) {
+func vote(proposalID int64, yea bool) {
 	testing.SetRealm(std.NewUserRealm(adminAddr))
 
 	prevYeaNum := governance.GetYeaByProposalId(proposalID)
@@ -92,11 +95,11 @@ func vote(proposalID uint64, yea bool) {
 
 	afterYeaNum := governance.GetYeaByProposalId(proposalID)
 	afterNayNum := governance.GetNayByProposalId(proposalID)
-	ufmt.Printf("[INFO] before voting - yea: %s, nay: %s\n", prevYeaNum, prevNayNum)
-	ufmt.Printf("[INFO] after voting - yea: %s, nay: %s\n", afterYeaNum, afterNayNum)
+	ufmt.Printf("[INFO] before voting - yea: %d, nay: %d\n", prevYeaNum, prevNayNum)
+	ufmt.Printf("[INFO] after voting - yea: %d, nay: %d\n", afterYeaNum, afterNayNum)
 }
 
-func execute(proposalID uint64) {
+func execute(proposalID int64) {
 	testing.SetRealm(std.NewUserRealm(adminAddr))
 
 	// get receiver's balance before executing
@@ -104,10 +107,7 @@ func execute(proposalID uint64) {
 	ufmt.Printf("[INFO] receiver's balance before executing: %d\n", prevReceiverBalance)
 
 	// execute proposal
-	err := governance.Execute(cross, proposalID)
-	if err != nil {
-		panic(err)
-	}
+	governance.Execute(cross, proposalID)
 
 	// get receiver's balance after executing
 	afterReceiverBalance := gns.BalanceOf(to)
@@ -116,7 +116,7 @@ func execute(proposalID uint64) {
 	proposalState := governance.GetExecutionStateByProposalId(proposalID)
 
 	ufmt.Printf("[EXPECTED] receiver's balance increased by %d\n", afterReceiverBalance-prevReceiverBalance)
-	ufmt.Printf("[EXPECTED] proposal's executed state is %v\n", proposalState.Executed)
+	ufmt.Printf("[EXPECTED] proposal's executed state is %v\n", proposalState)
 }
 
 // Output:
@@ -143,4 +143,4 @@ func execute(proposalID uint64) {
 // [INFO] receiver's balance before executing: 0
 // [INFO] receiver's balance after executing: 100
 // [EXPECTED] receiver's balance increased by 100
-// [EXPECTED] proposal's executed state is true
+// [EXPECTED] proposal's executed state is executed

@@ -8,7 +8,6 @@ import (
 	i256 "gno.land/p/gnoswap/int256"
 	u256 "gno.land/p/gnoswap/uint256"
 
-	"gno.land/p/gnoswap/consts"
 	"gno.land/r/demo/wugnot"
 )
 
@@ -144,6 +143,11 @@ func NewRouteParser() *RouteParser {
 
 // ParseRoutes parses route and quote strings into slices and validates them
 func (p *RouteParser) ParseRoutes(routes, quotes string) ([]string, []string, error) {
+	// Check for empty routes
+	if routes == "" || quotes == "" {
+		return nil, nil, ufmt.Errorf("routes cannot be empty")
+	}
+
 	routesArr := splitSingleChar(routes, ',')
 	quotesArr := splitSingleChar(quotes, ',')
 
@@ -237,9 +241,9 @@ func finalizeSwap(
 	handler.UpdateNewBalance()
 
 	var err error
-	if inputToken == consts.GNOT {
+	if inputToken == gnot {
 		err = handler.HandleInputSwap()
-	} else if outputToken == consts.GNOT {
+	} else if outputToken == gnot {
 		handler.HandleOutputSwap()
 	}
 

@@ -1,12 +1,12 @@
 package router
 
 import (
+	"errors"
 	"std"
 	"strconv"
 	"strings"
 
 	"gno.land/p/demo/ufmt"
-	"gno.land/p/gnoswap/consts"
 	i256 "gno.land/p/gnoswap/int256"
 	u256 "gno.land/p/gnoswap/uint256"
 
@@ -23,6 +23,12 @@ const (
 // to separate each pool, we use POOL_SEPARATOR
 const (
 	POOL_SEPARATOR = "*POOL*"
+)
+
+var (
+	gnot          string = "gnot"
+	wrappedWugnot string = "gno.land/r/demo/wugnot"
+	wugnotPath    string = "gno.land/r/demo/wugnot"
 )
 
 type RouterOperation interface {
@@ -66,14 +72,14 @@ func (op *baseSwapOperation) handleNativeTokenWrapping(
 	specifiedAmount *i256.Int,
 ) error {
 	// no native token
-	if inputToken == consts.WUGNOT_PATH || outputToken == consts.WUGNOT_PATH {
+	if inputToken == wugnotPath || outputToken == wugnotPath {
 		return nil
 	}
 
 	// save current user's WGNOT amount
 	op.userBeforeWugnotBalance = wugnot.BalanceOf(std.PreviousRealm().Address())
 
-	if inputToken != consts.GNOT {
+	if inputToken != "gnot" {
 		return nil
 	}
 
@@ -187,18 +193,109 @@ func handleMultiSwap(
 	numHops int,
 	amountSpecified *i256.Int,
 ) (*u256.Uint, *u256.Uint) {
+	previousRealmAddr := std.PreviousRealm().Address()
+
 	switch swapType {
 	case ExactIn:
 		input, output, fee := getDataForMultiPath(route, 0) // first data
-		sp := newSwapParams(input, output, fee, getPrevAddr(), amountSpecified)
+		sp := newSwapParams(input, output, fee, previousRealmAddr, amountSpecified)
 		return multiSwap(*sp, numHops, route)
 	case ExactOut:
 		input, output, fee := getDataForMultiPath(route, numHops-1) // last data
-		sp := newSwapParams(input, output, fee, getPrevAddr(), amountSpecified)
+		sp := newSwapParams(input, output, fee, previousRealmAddr, amountSpecified)
 		return multiSwapNegative(*sp, numHops-1, route)
 	default:
-		// Any invalid `SwapType` is caught in the `SwapRoute` function,
-		// so no invalid values can get in here.
 		panic(errInvalidSwapType)
 	}
+}
+
+// SwapRouteParams contains all parameters needed for swap route execution
+type SwapRouteParams struct {
+	inputToken  string
+	outputToken string
+	routeArr    string
+	quoteArr    string
+	deadline    int64
+	typ         SwapType
+	exactAmount string // amountIn for ExactIn, amountOut for ExactOut
+	limitAmount string // amountOutMin for ExactIn, amountInMax for ExactOut
+}
+
+// createSwapOperation creates the appropriate swap operation based on swap type
+func createSwapOperation(params SwapRouteParams) (RouterOperation, error) {
+	baseParams := BaseSwapParams{
+		InputToken:  params.inputToken,
+		OutputToken: params.outputToken,
+		RouteArr:    params.routeArr,
+		QuoteArr:    params.quoteArr,
+	}
+
+	switch params.typ {
+	case ExactIn:
+		pp := NewExactInParams(baseParams, params.exactAmount, params.limitAmount)
+		return NewExactInSwapOperation(pp), nil
+	case ExactOut:
+		pp := NewExactOutParams(baseParams, params.exactAmount, params.limitAmount)
+		return NewExactOutSwapOperation(pp), nil
+	default:
+		msg := addDetailToError(errInvalidSwapType, "unknown swap type")
+		return nil, errors.New(msg)
+	}
+}
+
+// extractSwapOperationData extracts common data from swap operation
+func extractSwapOperationData(op RouterOperation) (int64, int64, error) {
+	var baseOp *baseSwapOperation
+	switch typedOp := op.(type) {
+	case *ExactInSwapOperation:
+		baseOp = &typedOp.baseSwapOperation
+	case *ExactOutSwapOperation:
+		baseOp = &typedOp.baseSwapOperation
+	default:
+		return 0, 0, ufmt.Errorf("unexpected operation type: %T", op)
+	}
+
+	return baseOp.userBeforeWugnotBalance, baseOp.userWrappedWugnot, nil
+}
+
+// commonSwapRoute handles the common logic for both ExactIn and ExactOut swaps
+// Returns inputAmount, outputAmount, and actualReferrer
+func commonSwapRoute(cur realm, params SwapRouteParams) (string, string, error) {
+	op, err := createSwapOperation(params)
+	if err != nil {
+		return "", "", err
+	}
+
+	result, err := executeSwapOperation(op)
+	if err != nil {
+		msg := addDetailToError(
+			errInvalidInput,
+			ufmt.Sprintf("invalid %s SwapOperation: %s", params.typ.String(), err.Error()),
+		)
+		return "", "", errors.New(msg)
+	}
+
+	userBeforeWugnotBalance, userWrappedWugnot, err := extractSwapOperationData(op)
+	if err != nil {
+		return "", "", err
+	}
+
+	limitValue, err := u256.FromDecimal(params.limitAmount)
+	if err != nil {
+		return "", "", err
+	}
+
+	inputAmount, outputAmount := finalizeSwap(
+		params.inputToken,
+		params.outputToken,
+		result.AmountIn,
+		result.AmountOut,
+		params.typ,
+		limitValue,
+		userBeforeWugnotBalance,
+		userWrappedWugnot,
+		result.AmountSpecified.Abs(),
+	)
+
+	return inputAmount, outputAmount, nil
 }

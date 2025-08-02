@@ -7,14 +7,17 @@ import (
 	"gno.land/p/demo/avl"
 	"gno.land/p/demo/uassert"
 
+	prbac "gno.land/p/gnoswap/rbac"
+
+	"gno.land/r/gnoswap/v1/access"
 	"gno.land/r/gnoswap/v1/gns"
 )
 
-func TestChangeDistributionPctByAdmin(t *testing.T) {
+func TestChangeDistributionPct(t *testing.T) {
 	resetObject(t)
 
-	originCallback := callbackStakerEmissionChange
-	callbackStakerEmissionChange = func(amount int64) {}
+	originCallback := stakerEmissionChangeCallback
+	stakerEmissionChangeCallback = func(amount int64) {}
 
 	tests := []struct {
 		name        string
@@ -29,7 +32,7 @@ func TestChangeDistributionPctByAdmin(t *testing.T) {
 		{
 			name:        "panic if caller is not admin",
 			shouldPanic: true,
-			panicMsg:    `caller(g10xg6559w9e93zfttlhvdmaaa0er3zewcr7nh20) is not authorized for role admin`,
+			panicMsg:    `unauthorized: caller g10xg6559w9e93zfttlhvdmaaa0er3zewcr7nh20 is not admin or governance`,
 			targets:     []int{1, 2, 3, 4},
 			pcts:        []int64{1000, 2000, 3000, 4000},
 		},
@@ -79,100 +82,6 @@ func TestChangeDistributionPctByAdmin(t *testing.T) {
 
 			if tt.shouldPanic {
 				uassert.AbortsWithMessage(t, tt.panicMsg, func() {
-					ChangeDistributionPctByAdmin(
-						cross,
-						target01, pct01,
-						target02, pct02,
-						target03, pct03,
-						target04, pct04,
-					)
-				})
-			} else {
-				uassert.NotPanics(t, func() {
-					ChangeDistributionPctByAdmin(
-						cross,
-						target01, pct01,
-						target02, pct02,
-						target03, pct03,
-						target04, pct04,
-					)
-				})
-				tt.verify()
-			}
-		})
-	}
-	callbackStakerEmissionChange = originCallback
-}
-
-func TestChangeDistributionPct(t *testing.T) {
-	resetObject(t)
-
-	originCallback := callbackStakerEmissionChange
-	callbackStakerEmissionChange = func(amount int64) {}
-
-	tests := []struct {
-		name        string
-		shouldPanic bool
-		panicMsg    string
-		setup       func()
-		callerRealm std.Realm
-		targets     []int
-		pcts        []int64
-		verify      func()
-	}{
-		{
-			name:        "panic if caller is not governance",
-			shouldPanic: true,
-			panicMsg:    `caller(g10xg6559w9e93zfttlhvdmaaa0er3zewcr7nh20) is not authorized for role governance`,
-			targets:     []int{1, 2, 3, 4},
-			pcts:        []int64{1000, 2000, 3000, 4000},
-		},
-		{
-			name:        "panic if target is invalid",
-			shouldPanic: true,
-			panicMsg:    "[GNOSWAP-EMISSION-002] invalid emission target || invalid target(9)",
-			callerRealm: govRealm,
-			targets:     []int{1, 2, 3, 9},
-			pcts:        []int64{1000, 2000, 3000, 4000},
-		},
-		{
-			name:        "panic if sum of percentages is not 100%",
-			shouldPanic: true,
-			panicMsg:    "[GNOSWAP-EMISSION-002] invalid emission target || sum of percentages must be 10000, got 10001",
-			callerRealm: govRealm,
-			targets:     []int{1, 2, 3, 4},
-			pcts:        []int64{1000, 2000, 3000, 4001},
-		},
-		{
-			name:        "success if governance",
-			shouldPanic: false,
-			callerRealm: govRealm,
-			targets:     []int{1, 2, 3, 4},
-			pcts:        []int64{1000, 2000, 3000, 4000},
-			verify: func() {
-				uassert.Equal(t, int64(1000), GetDistributionBpsPct(1))
-				uassert.Equal(t, int64(2000), GetDistributionBpsPct(2))
-				uassert.Equal(t, int64(3000), GetDistributionBpsPct(3))
-				uassert.Equal(t, int64(4000), GetDistributionBpsPct(4))
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.setup != nil {
-				tt.setup()
-			}
-
-			if tt.callerRealm != (std.Realm{}) {
-				testing.SetRealm(tt.callerRealm)
-			}
-
-			target01, target02, target03, target04 := sliceToFourInt(t, tt.targets)
-			pct01, pct02, pct03, pct04 := sliceToFourInt64(t, tt.pcts)
-
-			if tt.shouldPanic {
-				uassert.AbortsWithMessage(t, tt.panicMsg, func() {
 					ChangeDistributionPct(
 						cross,
 						target01, pct01,
@@ -195,17 +104,16 @@ func TestChangeDistributionPct(t *testing.T) {
 			}
 		})
 	}
-	callbackStakerEmissionChange = originCallback
+	stakerEmissionChangeCallback = originCallback
 }
 
 func TestChangeDistributionPcts(t *testing.T) {
 	resetObject(t)
 
-	originCallback := callbackStakerEmissionChange
-	callbackStakerEmissionChange = func(amount int64) {}
+	originCallback := stakerEmissionChangeCallback
+	stakerEmissionChangeCallback = func(amount int64) {}
 
 	changeDistributionPcts(
-		cross,
 		1, 1000,
 		2, 2000,
 		3, 3000,
@@ -216,7 +124,7 @@ func TestChangeDistributionPcts(t *testing.T) {
 	uassert.Equal(t, int64(3000), GetDistributionBpsPct(3))
 	uassert.Equal(t, int64(4000), GetDistributionBpsPct(4))
 
-	callbackStakerEmissionChange = originCallback
+	stakerEmissionChangeCallback = originCallback
 }
 
 func TestCalculateAmount(t *testing.T) {
@@ -240,32 +148,34 @@ func TestCalculateAmount(t *testing.T) {
 
 func TestTransferToTarget(t *testing.T) {
 	resetObject(t)
+	emissionAddr, _ := access.GetAddress(prbac.ROLE_EMISSION.String())
 
 	tests := []struct {
-		name        string
-		shouldPanic bool
-		shouldAbort bool
-		panicMsg    string
-		setup       func()
-		target      int
-		amount      int64
-		verify      func()
+		name         string
+		shouldAbort  bool
+		shouldError  bool
+		abortMessage string
+		errorMsg     string
+		setup        func()
+		target       int
+		amount       int64
+		verify       func()
 	}{
 		{
 			name:        "invalid target",
-			shouldPanic: false,
-			shouldAbort: true,
-			panicMsg:    "[GNOSWAP-EMISSION-002] invalid emission target || invalid target(9)",
+			shouldAbort: false,
+			shouldError: true,
+			errorMsg:    "[GNOSWAP-EMISSION-002] invalid emission target || invalid target(9)",
 			target:      9,
 			amount:      100,
 		},
 		{
-			name:        "not enough balance for emission",
-			shouldPanic: false,
-			shouldAbort: true,
-			panicMsg:    "insufficient balance",
-			target:      LIQUIDITY_STAKER,
-			amount:      1,
+			name:         "not enough balance for emission",
+			shouldAbort:  true,
+			shouldError:  false,
+			abortMessage: "insufficient balance",
+			target:       LIQUIDITY_STAKER,
+			amount:       1,
 		},
 		{
 			name:   "transfer to LIQUIDITY_STAKER",
@@ -315,18 +225,19 @@ func TestTransferToTarget(t *testing.T) {
 				tt.setup()
 			}
 
-			if tt.shouldPanic {
-				uassert.PanicsWithMessage(t, tt.panicMsg, func() {
-					transferToTarget(cross, tt.target, tt.amount)
+			if tt.shouldAbort {
+				uassert.AbortsWithMessage(t, tt.abortMessage, func() {
+					transferToTarget(tt.target, tt.amount)
 				})
-			} else if tt.shouldAbort {
-				uassert.AbortsWithMessage(t, tt.panicMsg, func() {
-					transferToTarget(cross, tt.target, tt.amount)
-				})
+
+				return
+			}
+
+			err := transferToTarget(tt.target, tt.amount)
+			if tt.shouldError {
+				uassert.Equal(t, tt.errorMsg, err.Error())
 			} else {
-				uassert.NotPanics(t, func() {
-					transferToTarget(cross, tt.target, tt.amount)
-				})
+				uassert.NoError(t, err)
 				tt.verify()
 			}
 		})
@@ -346,7 +257,7 @@ func TestClearDistributedToStaker(t *testing.T) {
 		{
 			name:        "can not clear is caller is not staker",
 			shouldPanic: true,
-			panicMsg:    `caller(g10xg6559w9e93zfttlhvdmaaa0er3zewcr7nh20) is not authorized for role staker`,
+			panicMsg:    `unauthorized: caller g10xg6559w9e93zfttlhvdmaaa0er3zewcr7nh20 is not staker`,
 		},
 		{
 			name:        "can clear if caller is staker",
@@ -388,7 +299,7 @@ func TestClearClearDistributedToGovStaker(t *testing.T) {
 		{
 			name:        "can not clear is caller is not gov/staker",
 			shouldPanic: true,
-			panicMsg:    `caller(g10xg6559w9e93zfttlhvdmaaa0er3zewcr7nh20) is not authorized for role gov_staker`,
+			panicMsg:    `unauthorized: caller g10xg6559w9e93zfttlhvdmaaa0er3zewcr7nh20 is not gov_staker`,
 		},
 		{
 			name:        "can clear if caller is gov/taker",
@@ -449,6 +360,7 @@ func setupTestEnv(t *testing.T) {
 	distributedToGovStaker = 0
 
 	testing.SetRealm(adminRealm)
+	emissionAddr, _ := access.GetAddress(prbac.ROLE_EMISSION.String())
 	gns.Transfer(cross, emissionAddr, 1000000)
 }
 
@@ -460,7 +372,7 @@ func TestDistributeToTarget(t *testing.T) {
 	t.Run("Basic distribution test", func(t *testing.T) {
 		setupTestEnv(t)
 		amount := int64(10000)
-		totalSent := distributeToTarget(cross, amount)
+		totalSent, _ := distributeToTarget(amount)
 
 		// Expected distribution amounts
 		expectedStaker := int64(7500)   // 75%
@@ -507,7 +419,7 @@ func TestDistributeToTarget(t *testing.T) {
 	t.Run("Zero amount distribution test", func(t *testing.T) {
 		resetObject(t)
 		amount := int64(0)
-		totalSent := distributeToTarget(cross, amount)
+		totalSent, _ := distributeToTarget(amount)
 
 		if totalSent != 0 {
 			t.Errorf("Total distribution amount is not 0 for zero amount: %d", totalSent)
@@ -525,7 +437,8 @@ func TestDistributeToTarget(t *testing.T) {
 		resetObject(t)
 		setupTestEnv(t)
 		amount := int64(1000000)
-		totalSent := distributeToTarget(cross, amount)
+		
+		totalSent, _ := distributeToTarget(amount)
 
 		// Expected distribution amounts
 		expectedStaker := int64(750000)   // 75%
@@ -575,8 +488,8 @@ func TestDistributeToTarget(t *testing.T) {
 		amount := int64(-10000)
 
 		// Negative amount should cause panic
-		uassert.AbortsWithMessage(t, "invalid amount or bptPct", func() {
-			distributeToTarget(cross, amount)
+		uassert.PanicsWithMessage(t, "invalid amount or bptPct", func() {
+			distributeToTarget(amount)
 		})
 
 		// Verify all distribution amounts are 0
@@ -593,8 +506,8 @@ func TestDistributeToTarget(t *testing.T) {
 		amount := int64(9223372036854775807) // int64 maximum value
 
 		// Maximum value should cause panic
-		uassert.AbortsWithMessage(t, "amount too large", func() {
-			distributeToTarget(cross, amount)
+		uassert.PanicsWithMessage(t, "amount too large", func() {
+			distributeToTarget(amount)
 		})
 
 		// Verify all distribution amounts are 0
@@ -609,7 +522,7 @@ func TestDistributeToTarget(t *testing.T) {
 		resetObject(t)
 		setupTestEnv(t)
 		amount := int64(10001) // Amount with decimal point (e.g., 10000.1)
-		totalSent := distributeToTarget(cross, amount)
+		totalSent, _ := distributeToTarget(amount)
 
 		// Expected distribution amounts (decimal part is truncated)
 		expectedStaker := int64(7500)   // 75%
@@ -752,7 +665,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				callerRealm: adminRealm,
 				targets:     [4]int{LIQUIDITY_STAKER, DEVOPS, COMMUNITY_POOL, LIQUIDITY_STAKER},
 				percentages: [4]int64{4000, 3000, 2000, 1000},
-				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target || target 1 appears multiple times",
+				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target",
 				shouldPanic: true,
 			},
 			{
@@ -760,7 +673,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				callerRealm: adminRealm,
 				targets:     [4]int{DEVOPS, DEVOPS, DEVOPS, DEVOPS},
 				percentages: [4]int64{2500, 2500, 2500, 2500},
-				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target || target 2 appears multiple times",
+				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target",
 				shouldPanic: true,
 			},
 			{
@@ -768,7 +681,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				callerRealm: adminRealm,
 				targets:     [4]int{LIQUIDITY_STAKER, GOV_STAKER, LIQUIDITY_STAKER, GOV_STAKER},
 				percentages: [4]int64{3000, 2000, 3000, 2000},
-				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target || target 1 appears multiple times",
+				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target",
 				shouldPanic: true,
 			},
 			{
@@ -776,7 +689,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				callerRealm: adminRealm,
 				targets:     [4]int{COMMUNITY_POOL, DEVOPS, COMMUNITY_POOL, GOV_STAKER},
 				percentages: [4]int64{5000, 2500, 2500, 0},
-				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target || target 3 appears multiple times",
+				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target",
 				shouldPanic: true,
 			},
 			{
@@ -795,7 +708,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 
 				if tt.shouldPanic {
 					uassert.AbortsWithMessage(t, tt.expectedErr, func() {
-						ChangeDistributionPctByAdmin(
+						ChangeDistributionPct(
 							cross,
 							tt.targets[0], tt.percentages[0],
 							tt.targets[1], tt.percentages[1],
@@ -805,7 +718,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 					})
 				} else {
 					// Should not panic for valid distribution
-					ChangeDistributionPctByAdmin(
+					ChangeDistributionPct(
 						cross,
 						tt.targets[0], tt.percentages[0],
 						tt.targets[1], tt.percentages[1],
@@ -837,7 +750,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				callerRealm: govRealm,
 				targets:     [4]int{GOV_STAKER, DEVOPS, COMMUNITY_POOL, GOV_STAKER},
 				percentages: [4]int64{5000, 2000, 2000, 1000},
-				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target || target 4 appears multiple times",
+				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target",
 				shouldPanic: true,
 			},
 			{
@@ -845,7 +758,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				callerRealm: govRealm,
 				targets:     [4]int{LIQUIDITY_STAKER, LIQUIDITY_STAKER, DEVOPS, COMMUNITY_POOL},
 				percentages: [4]int64{3000, 3000, 2000, 2000},
-				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target || target 1 appears multiple times",
+				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target",
 				shouldPanic: true,
 			},
 			{
@@ -853,7 +766,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				callerRealm: govRealm,
 				targets:     [4]int{COMMUNITY_POOL, COMMUNITY_POOL, COMMUNITY_POOL, COMMUNITY_POOL},
 				percentages: [4]int64{2500, 2500, 2500, 2500},
-				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target || target 3 appears multiple times",
+				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target",
 				shouldPanic: true,
 			},
 			{
@@ -916,7 +829,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				setupFunc: func() {
 					// Set initial distribution
 					testing.SetRealm(adminRealm)
-					ChangeDistributionPctByAdmin(
+					ChangeDistributionPct(
 						cross,
 						LIQUIDITY_STAKER, 2500,
 						DEVOPS, 2500,
@@ -928,7 +841,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				isAdmin:     true,
 				targets:     [4]int{LIQUIDITY_STAKER, DEVOPS, COMMUNITY_POOL, LIQUIDITY_STAKER},
 				percentages: [4]int64{4000, 3000, 2000, 1000},
-				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target || target 1 appears multiple times",
+				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target",
 				description: "distribution should remain unchanged after failed duplicate attempt",
 			},
 			{
@@ -948,7 +861,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				isAdmin:     false,
 				targets:     [4]int{GOV_STAKER, LIQUIDITY_STAKER, DEVOPS, GOV_STAKER},
 				percentages: [4]int64{3000, 5000, 1500, 500},
-				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target || target 4 appears multiple times",
+				expectedErr: "[GNOSWAP-EMISSION-004] duplicate emission target",
 				description: "GOV_STAKER should remain at 0% after failed manipulation attempt",
 			},
 		}
@@ -975,7 +888,7 @@ func TestDuplicateTargetsFix(t *testing.T) {
 				// Attempt the change with duplicates
 				uassert.AbortsWithMessage(t, tt.expectedErr, func() {
 					if tt.isAdmin {
-						ChangeDistributionPctByAdmin(
+						ChangeDistributionPct(
 							cross,
 							tt.targets[0], tt.percentages[0],
 							tt.targets[1], tt.percentages[1],

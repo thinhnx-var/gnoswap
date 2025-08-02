@@ -10,23 +10,25 @@ import (
 
 	"gno.land/p/demo/testutils"
 	"gno.land/p/demo/ufmt"
-	"gno.land/p/gnoswap/consts"
 
 	"gno.land/r/gnoswap/v1/access"
 	"gno.land/r/gnoswap/v1/common"
 	"gno.land/r/gnoswap/v1/pool"
 	"gno.land/r/gnoswap/v1/staker"
 
+	prabc "gno.land/p/gnoswap/rbac"
+	_ "gno.land/r/gnoswap/v1/rbac"
+
 	"gno.land/r/onbloc/bar"
 	"gno.land/r/onbloc/foo"
 )
 
 var (
-	adminAddr, _  = access.GetAddress(access.ROLE_ADMIN)
+	adminAddr, _  = access.GetAddress(prabc.ROLE_ADMIN.String())
 	adminRealm    = std.NewUserRealm(adminAddr)
-	poolAddr, _   = access.GetAddress(access.ROLE_POOL)
-	stakerAddr, _ = access.GetAddress(access.ROLE_STAKER)
-	routerAddr, _ = access.GetAddress(access.ROLE_ROUTER)
+	poolAddr, _   = access.GetAddress(prabc.ROLE_POOL.String())
+	stakerAddr, _ = access.GetAddress(prabc.ROLE_STAKER.String())
+	routerAddr, _ = access.GetAddress(prabc.ROLE_ROUTER.String())
 	routerRealm   = std.NewUserRealm(routerAddr)
 
 	aliceAddr  = testutils.TestAddress("alice")
@@ -35,6 +37,8 @@ var (
 	token0Path = "gno.land/r/onbloc/bar"
 	token1Path = "gno.land/r/onbloc/foo"
 	fee        = uint32(3000)
+
+	maxInt64 int64 = 9223372036854775807
 )
 
 func main() {
@@ -69,10 +73,10 @@ func initPool() {
 	foo.Transfer(cross, aliceAddr, defaultTokenAmount)
 
 	testing.SetRealm(aliceRealm)
-	bar.Approve(cross, poolAddr, consts.INT64_MAX)
-	foo.Approve(cross, poolAddr, consts.INT64_MAX)
-	bar.Approve(cross, stakerAddr, consts.INT64_MAX)
-	foo.Approve(cross, stakerAddr, consts.INT64_MAX)
+	bar.Approve(cross, poolAddr, maxInt64)
+	foo.Approve(cross, poolAddr, maxInt64)
+	bar.Approve(cross, stakerAddr, maxInt64)
+	foo.Approve(cross, stakerAddr, maxInt64)
 
 	ufmt.Printf("[INFO] Creating %s:%s:%d pool (tick: %d)\n", token0Path, token1Path, fee, 0)
 	pool.CreatePool(
@@ -86,14 +90,14 @@ func initPool() {
 	// Setup internal incentive pool
 	poolPath := pool.GetPoolPath(token0Path, token1Path, fee)
 	testing.SetRealm(adminRealm)
-	staker.SetPoolTierByAdmin(cross, poolPath, 1)
+	staker.SetPoolTier(cross, poolPath, 1)
 }
 
 func mintAndStakePosition() {
 	testing.SetRealm(aliceRealm)
 
 	ufmt.Println("[INFO] Mint and Stake Position")
-	positionId, liquidity, _, _, _ := staker.MintAndStake(
+	positionId, liquidity, amount0, amount1, _ := staker.MintAndStake(
 		cross,
 		token0Path,
 		token1Path,
@@ -110,9 +114,16 @@ func mintAndStakePosition() {
 
 	stakeHeight := staker.GetDepositStakeHeight(positionId)
 
+	poolBalance0 := common.BalanceOf(token0Path, poolAddr)
+	poolBalance1 := common.BalanceOf(token1Path, poolAddr)
+
 	ufmt.Printf("[EXPECTED] Position ID should be %d\n", positionId)
 	ufmt.Printf("[EXPECTED] Liquidity should be %s\n", liquidity)
 	ufmt.Printf("[EXPECTED] Staked height should be %d\n", stakeHeight)
+	ufmt.Printf("[EXPECTED] Amount0 should be %s\n", amount0)
+	ufmt.Printf("[EXPECTED] Amount1 should be %s\n", amount1)
+	ufmt.Printf("[EXPECTED] Pool Balance0 should be %d\n", poolBalance0)
+	ufmt.Printf("[EXPECTED] Pool Balance1 should be %d\n", poolBalance1)
 }
 
 func unstakePosition() {
@@ -138,11 +149,15 @@ func unstakePosition() {
 // [EXPECTED] Position ID should be 1
 // [EXPECTED] Liquidity should be 34026470
 // [EXPECTED] Staked height should be 123
+// [EXPECTED] Amount0 should be 10000000
+// [EXPECTED] Amount1 should be 10000000
+// [EXPECTED] Pool Balance0 should be 10000000
+// [EXPECTED] Pool Balance1 should be 10000000
 //
 // [SCENARIO] 3. Skip blocks and check position
 // [INFO] Current block height: 133
 //
 // [SCENARIO] 4. UnStake Position
 // [INFO] Unstake Position
-// [EXPECTED] Unstaked Amount0 should be 9999999
-// [EXPECTED] Unstaked Amount1 should be 9999999
+// [EXPECTED] Unstaked Amount0 should be 10000000
+// [EXPECTED] Unstaked Amount1 should be 10000000

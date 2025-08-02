@@ -112,39 +112,39 @@ func TestProtocolFeeStateSetDevOpsPct(t *testing.T) {
 	tests := []struct {
 		name        string
 		percentage  uint64
-		shouldPanic bool
-		panicMsg    string
+		shouldError bool
+		errorMsg    string
 		expectedPct uint64
 	}{
 		{
 			name:        "set valid percentage - 0%",
 			percentage:  0,
-			shouldPanic: false,
+			shouldError: false,
 			expectedPct: 0,
 		},
 		{
 			name:        "set valid percentage - 25%",
 			percentage:  2500,
-			shouldPanic: false,
+			shouldError: false,
 			expectedPct: 2500,
 		},
 		{
 			name:        "set valid percentage - 100%",
 			percentage:  10000,
-			shouldPanic: false,
+			shouldError: false,
 			expectedPct: 10000,
 		},
 		{
 			name:        "set invalid percentage - over 100%",
 			percentage:  10001,
-			shouldPanic: true,
-			panicMsg:    "[GNOSWAP-PROTOCOL_FEE-002] invalid percentage || pct(10001) should not be bigger than 10000",
+			shouldError: true,
+			errorMsg:    "[GNOSWAP-PROTOCOL_FEE-002] invalid percentage || pct(10001) should not be bigger than 10000",
 		},
 		{
 			name:        "set invalid percentage - very large",
 			percentage:  50000,
-			shouldPanic: true,
-			panicMsg:    "[GNOSWAP-PROTOCOL_FEE-002] invalid percentage || pct(50000) should not be bigger than 10000",
+			shouldError: true,
+			errorMsg:    "[GNOSWAP-PROTOCOL_FEE-002] invalid percentage || pct(50000) should not be bigger than 10000",
 		},
 	}
 
@@ -153,15 +153,13 @@ func TestProtocolFeeStateSetDevOpsPct(t *testing.T) {
 			pfs := NewProtocolFeeState()
 
 			// Initially should be 0
-			uassert.Equal(t, pfs.DevOpsPct, uint64(0))
+			uassert.Equal(t, pfs.devOpsPct, uint64(0))
+			_, err := pfs.setDevOpsPct(test.percentage)
 
-			if test.shouldPanic {
-				uassert.PanicsWithMessage(t, test.panicMsg, func() {
-					pfs.setDevOpsPct(test.percentage)
-				})
+			if test.shouldError {
+				uassert.Equal(t, err.Error(), test.errorMsg)
 			} else {
-				pfs.setDevOpsPct(test.percentage)
-				uassert.Equal(t, pfs.DevOpsPct, test.expectedPct)
+				uassert.NoError(t, err)
 			}
 		})
 	}
@@ -202,17 +200,17 @@ func TestProtocolFeeStateClearTokenListWithAmount(t *testing.T) {
 
 			// Setup initial data
 			for token, amount := range test.initialData {
-				pfs.TokenListWithAmount[token] = amount
+				pfs.tokenListWithAmount[token] = amount
 			}
 
 			// Verify initial state
-			uassert.Equal(t, len(pfs.TokenListWithAmount), len(test.initialData))
+			uassert.Equal(t, len(pfs.tokenListWithAmount), len(test.initialData))
 
 			// Clear the list
 			pfs.clearTokenListWithAmount()
 
 			// Verify final state
-			uassert.Equal(t, len(pfs.TokenListWithAmount), test.expectedLen)
+			uassert.Equal(t, len(pfs.tokenListWithAmount), test.expectedLen)
 		})
 	}
 }
@@ -260,7 +258,7 @@ func TestProtocolFeeStateUpdateDistributedToGovStakerHistory(t *testing.T) {
 			}
 
 			// Check if history was updated correctly
-			historyValue, exists := pfs.DistributedToGovStakerHistory.Get(test.tokenPath)
+			historyValue, exists := pfs.distributedToGovStakerHistory.Get(test.tokenPath)
 			uassert.True(t, exists)
 			uassert.Equal(t, historyValue.(uint64), test.expectedSum)
 		})
@@ -310,7 +308,7 @@ func TestProtocolFeeStateUpdateDistributedToDevOpsHistory(t *testing.T) {
 			}
 
 			// Check if history was updated correctly
-			historyValue, exists := pfs.DistributedToDevOpsHistory.Get(test.tokenPath)
+			historyValue, exists := pfs.distributedToDevOpsHistory.Get(test.tokenPath)
 			uassert.True(t, exists)
 			uassert.Equal(t, historyValue.(uint64), test.expectedSum)
 		})

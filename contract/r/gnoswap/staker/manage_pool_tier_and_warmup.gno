@@ -3,155 +3,132 @@ package staker
 import (
 	"std"
 
-	"gno.land/p/demo/ufmt"
-
 	"gno.land/r/gnoswap/v1/access"
 	"gno.land/r/gnoswap/v1/halt"
 
 	en "gno.land/r/gnoswap/v1/emission"
-	pl "gno.land/r/gnoswap/v1/pool"
 )
 
 const (
 	NOT_EMISSION_TARGET_TIER uint64 = 0
 )
 
-// SetPoolTierByAdmin sets the tier of a pool by an admin
-func SetPoolTierByAdmin(cur realm, poolPath string, tier uint64) {
-	assertOnlyAdmin()
-	assertMustNotHalted()
-	assertPoolMustExist(poolPath)
-
-	setPoolTier(cur, poolPath, tier)
-}
-
 // SetPoolTier sets the tier of a pool by governance
 func SetPoolTier(cur realm, poolPath string, tier uint64) {
-	assertOnlyGovernance()
-	assertMustNotHalted()
-	assertPoolMustExist(poolPath)
+	halt.AssertIsNotHaltedStaker()
 
-	setPoolTier(cur, poolPath, tier)
-}
+	caller := std.PreviousRealm().Address()
+	access.AssertIsAdminOrGovernance(caller)
 
-func setPoolTier(cur realm, poolPath string, tier uint64) {
-	en.MintAndDistributeGns(cross)
+	assertIsPoolExists(poolPath)
+	assertIsValidPoolTier(tier)
 
 	currentHeight := std.ChainHeight()
-	pools.GetOrCreate(poolPath)
-	poolTier.changeTier(currentHeight, pools, poolPath, tier)
+	setPoolTier(poolPath, tier, currentHeight)
 
-	prevAddr, prevRealm := getPrev()
+	previousRealm := std.PreviousRealm()
 	std.Emit(
 		"SetPoolTier",
-		"prevAddr", prevAddr,
-		"prevRealm", prevRealm,
+		"prevAddr", previousRealm.Address().String(),
+		"prevRealm", previousRealm.PkgPath(),
 		"poolPath", poolPath,
 		"tier", formatUint(tier),
 		"height", formatInt(currentHeight),
 	)
 }
 
-// ChangePoolTierByAdmin changes the tier of a pool by an admin
-func ChangePoolTierByAdmin(cur realm, poolPath string, tier uint64) {
-	assertOnlyAdmin()
-	assertMustNotHalted()
-	assertPoolMustExist(poolPath)
-
-	changePoolTier(cur, poolPath, tier)
-}
-
 // ChangePoolTier changes the tier of a pool by governance
 func ChangePoolTier(cur realm, poolPath string, tier uint64) {
-	assertOnlyGovernance()
-	assertMustNotHalted()
-	assertPoolMustExist(poolPath)
+	halt.AssertIsNotHaltedStaker()
 
-	changePoolTier(cur, poolPath, tier)
-}
+	caller := std.PreviousRealm().Address()
+	access.AssertIsAdminOrGovernance(caller)
 
-func changePoolTier(cur realm, poolPath string, tier uint64) {
-	en.MintAndDistributeGns(cross)
+	assertIsPoolExists(poolPath)
+	assertIsValidPoolTier(tier)
 
-	prevTier := poolTier.CurrentTier(poolPath)
 	currentHeight := std.ChainHeight()
-	poolTier.changeTier(currentHeight, pools, poolPath, tier)
+	previousTier, newTier := changePoolTier(poolPath, tier, currentHeight)
 
-	prevAddr, prevRealm := getPrev()
+	previousRealm := std.PreviousRealm()
 	std.Emit(
 		"ChangePoolTier",
-		"prevAddr", prevAddr,
-		"prevRealm", prevRealm,
+		"prevAddr", previousRealm.Address().String(),
+		"prevRealm", previousRealm.PkgPath(),
 		"poolPath", poolPath,
-		"prevTier", formatUint(prevTier),
-		"newTier", formatUint(tier),
+		"prevTier", formatUint(previousTier),
+		"newTier", formatUint(newTier),
 		"height", formatInt(currentHeight),
 	)
-}
-
-// RemovePoolTierByAdmin removes the tier of a pool by an admin
-func RemovePoolTierByAdmin(cur realm, poolPath string) {
-	assertOnlyAdmin()
-	assertMustNotHalted()
-	assertPoolMustExist(poolPath)
-
-	removePoolTier(cur, poolPath)
 }
 
 // RemovePoolTier removes the tier of a pool by governance
 func RemovePoolTier(cur realm, poolPath string) {
-	assertOnlyGovernance()
-	assertMustNotHalted()
-	assertPoolMustExist(poolPath)
+	halt.AssertIsNotHaltedStaker()
 
-	removePoolTier(cur, poolPath)
-}
+	caller := std.PreviousRealm().Address()
+	access.AssertIsAdminOrGovernance(caller)
 
-func removePoolTier(cur realm, poolPath string) {
-	en.MintAndDistributeGns(cross)
+	assertIsPoolExists(poolPath)
 
 	currentHeight := std.ChainHeight()
-	poolTier.changeTier(currentHeight, pools, poolPath, NOT_EMISSION_TARGET_TIER)
+	removePoolTier(poolPath, currentHeight)
 
-	prevAddr, prevRealm := getPrev()
+	previousRealm := std.PreviousRealm()
 	std.Emit(
 		"RemovePoolTier",
-		"prevAddr", prevAddr,
-		"prevRealm", prevRealm,
+		"prevAddr", previousRealm.Address().String(),
+		"prevRealm", previousRealm.PkgPath(),
 		"poolPath", poolPath,
 		"height", formatInt(currentHeight),
 	)
 }
 
-// SetWarmUpByAdmin sets the warmup percentage and block duration by an admin
-func SetWarmUpByAdmin(cur realm, pct, blockDuration int64) {
-	assertOnlyAdmin()
-	assertMustNotHalted()
-
-	setWarmUp(cur, pct, blockDuration)
-}
-
 // SetWarmUp sets the warmup percentage and block duration by governance
 func SetWarmUp(cur realm, pct, blockDuration int64) {
-	assertOnlyGovernance()
-	assertMustNotHalted()
+	halt.AssertIsNotHaltedStaker()
 
-	setWarmUp(cur, pct, blockDuration)
-}
+	caller := std.PreviousRealm().Address()
+	access.AssertIsAdminOrGovernance(caller)
 
-func setWarmUp(cur realm, pct, blockDuration int64) {
-	en.MintAndDistributeGns(cross)
+	setWarmUp(pct, blockDuration)
 
-	modifyWarmup(pctToIndex(pct), blockDuration)
-
-	prevAddr, prevRealm := getPrev()
+	previousRealm := std.PreviousRealm()
 	std.Emit(
 		"SetWarmUp",
-		"prevAddr", prevAddr,
-		"prevRealm", prevRealm,
+		"prevAddr", previousRealm.Address().String(),
+		"prevRealm", previousRealm.PkgPath(),
 		"pct", formatInt(pct),
 		"blockDuration", formatInt(blockDuration),
 	)
+}
+
+func setPoolTier(poolPath string, tier uint64, height int64) {
+	en.MintAndDistributeGns(cross)
+
+	pools.GetOrCreate(poolPath)
+	poolTier.changeTier(height, pools, poolPath, tier)
+}
+
+func changePoolTier(poolPath string, tier uint64, height int64) (uint64, uint64) {
+	en.MintAndDistributeGns(cross)
+	previousTier := poolTier.CurrentTier(poolPath)
+
+	poolTier.changeTier(height, pools, poolPath, tier)
+
+	return previousTier, tier
+}
+
+func removePoolTier(poolPath string, height int64) {
+	en.MintAndDistributeGns(cross)
+
+	poolTier.changeTier(height, pools, poolPath, NOT_EMISSION_TARGET_TIER)
+}
+
+func setWarmUp(pct, blockDuration int64) {
+	en.MintAndDistributeGns(cross)
+
+	modifyWarmup(pctToIndex(pct), blockDuration)
 }
 
 func pctToIndex(pct int64) int {
@@ -166,28 +143,5 @@ func pctToIndex(pct int64) int {
 		return 3
 	default:
 		panic("staker.gno__pctToIndex() || pct is not valid")
-	}
-}
-
-func assertPoolMustExist(poolPath string) {
-	if !(pl.DoesPoolPathExist(poolPath)) {
-		panic(addDetailToError(
-			errInvalidPoolPath,
-			ufmt.Sprintf("pool(%s) does not exist", poolPath),
-		))
-	}
-}
-
-func assertOnlyAdmin() {
-	access.AdminOnly(getPrevAddr())
-}
-
-func assertOnlyGovernance() {
-	access.GovernanceOnly(getPrevAddr())
-}
-
-func assertMustNotHalted() {
-	if err := halt.IsHalted(); err != nil {
-		panic(err)
 	}
 }

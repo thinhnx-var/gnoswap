@@ -13,6 +13,9 @@ import (
 	"gno.land/r/gnoswap/v1/router"
 	sr "gno.land/r/gnoswap/v1/staker"
 
+	prabc "gno.land/p/gnoswap/rbac"
+	_ "gno.land/r/gnoswap/v1/rbac"
+
 	"gno.land/r/onbloc/bar"
 	"gno.land/r/onbloc/baz"
 
@@ -20,12 +23,12 @@ import (
 )
 
 var (
-	adminAddr, _ = access.GetAddress(access.ROLE_ADMIN)
+	adminAddr, _ = access.GetAddress(prabc.ROLE_ADMIN.String())
 	adminRealm   = std.NewUserRealm(adminAddr)
 
-	poolAddr, _ = access.GetAddress(access.ROLE_POOL)
+	poolAddr, _ = access.GetAddress(prabc.ROLE_POOL.String())
 
-	routerAddr, _ = access.GetAddress(access.ROLE_ROUTER)
+	routerAddr, _ = access.GetAddress(prabc.ROLE_ROUTER.String())
 
 	barPath = "gno.land/r/onbloc/bar"
 	bazPath = "gno.land/r/onbloc/baz"
@@ -142,7 +145,7 @@ func createPool(t *testing.T,
 	poolPath := pl.GetPoolPath(token0, token1, fee)
 	if !pl.DoesPoolPathExist(poolPath) {
 		pl.CreatePool(cross, token0, token1, fee, sqrtPriceX96)
-		sr.SetPoolTierByAdmin(cross, poolPath, tier1)
+		sr.SetPoolTier(cross, poolPath, tier1)
 	}
 }
 
